@@ -1,0 +1,60 @@
+name: Build Android APK (Official-like)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.24.x"
+          channel: stable
+
+      - name: Flutter pub get
+        working-directory: ui/flutter
+        run: flutter pub get
+
+      - name: Install gomobile
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go get golang.org/x/mobile/bind
+          gomobile init
+
+      - name: Build Android AAR (gomobile bind)
+        run: |
+          mkdir -p ui/flutter/android/app/libs
+          gomobile bind -tags nosqlite -ldflags="-w -s -checklinkname=0" \
+            -o ui/flutter/android/app/libs/libgopeed.aar \
+            -target=android -androidapi 21 -javapkg="com.gopeed" \
+            github.com/GopeedLab/gopeed/bind/mobile
+
+      - name: Build APK (release + split-per-abi)
+        working-directory: ui/flutter
+        run: |
+          flutter build apk --release --split-per-abi
+          echo "---- APK outputs ----"
+          ls -lah build/app/outputs/flutter-apk
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: gopeed-official-like-apks
+          path: ui/flutter/build/app/outputs/flutter-apk/*.apk
